@@ -198,9 +198,7 @@ int main()
     cudaEventElapsedTime(&time_diff_ms, start, stop);  // in millisecond 
 
     printf("GPU Jacobi: %f milliseconds\n", time_diff_ms);
-    printf("GPU Jacobi: %g seconds, %d iterations\n", 
-           t2.tv_sec - t1.tv_sec + 
-           (t2.tv_usec - t1.tv_usec) / 1.0e6, iterations);
+    printf("GPU Jacobi: %g seconds, %d iterations\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec) / 1.0e6, iterations);
 
     //// Add here the clean up code for all allocated CUDA resources
     // #error Add here the clean up code   
