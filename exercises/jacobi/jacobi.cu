@@ -8,8 +8,7 @@
 #define MAX_ITERATIONS 3000
 
 // CPU kernel
-void sweepCPU(double* phi, const double *phiPrev, const double *source, 
-              double h2, int N)
+void sweepCPU(double* phi, const double *phiPrev, const double *source, double h2, int N)
 { 
     int i, j;
     int index, i1, i2, i3, i4;
@@ -30,10 +29,19 @@ void sweepCPU(double* phi, const double *phiPrev, const double *source,
 
 // GPU kernel
 __global__ 
-void sweepGPU(double *phi, const double *phiPrev, const double *source, 
-              double h2, int N)
+void sweepGPU(double *phi, const double *phiPrev, const double *source, double h2, int N)
 {
-    #error Add here the GPU version of the update routine (see sweepCPU above)
+    // #error Add here the GPU version of the update routine (see sweepCPU above)
+    int ii = blockDim.x*blockIdx.x + threadIdx.x;
+    int jj = blockDim.y*blockIdx.y + threadIdx.y;
+
+    if (0<ii && 0 < jj && ii < N-1 && jj < N-1)
+    {
+      int ind = ii + jj*N;
+      phi[ind] = 0.25 * (phiPrev[(ii-1)+jj*N] + phiPrev[(ii+1)+jj*N] + phiPrev[ii+(jj-1)*N] + phiPrev[ii+(jj+1)*N] - 
+                              h2 * source[ind]);
+    }
+
 }
 
 
@@ -156,7 +164,9 @@ int main()
         // and implement similar calling sequence for the GPU code
 
         //// Add routines here
-        #error Add GPU kernel calls here (see CPU version above)
+        // #error Add GPU kernel calls here (see CPU version above)
+        sweepGPU<<<dimGrid, dimBlock>>>(phiPrev_d, phi_d, source_d, h*h, N);
+        sweepGPU<<<dimGrid, dimBlock>>>(phi_d, phiPrev_d, source_d, h*h, N);
 
         iterations += 2;
         
@@ -170,7 +180,8 @@ int main()
     }
     
     //// Add here the routine to copy back the results
-    #error Copy back the results
+    // #error Copy back the results
+    CUDA_CHECK(cudaMemcpy(phi_cuda, phi_d, size, cudaMemcpyDeviceToHost) );
 
     gettimeofday(&t2, NULL);
     printf("GPU Jacobi: %g seconds, %d iterations\n", 
@@ -178,7 +189,10 @@ int main()
            (t2.tv_usec - t1.tv_usec) / 1.0e6, iterations);
 
     //// Add here the clean up code for all allocated CUDA resources
-    #error Add here the clean up code   
+    // #error Add here the clean up code   
+    CUDA_CHECK(cudaFree(phi_d));
+    CUDA_CHECK(cudaFree(phiPrev_d));
+    CUDA_CHECK(cudaFree(source_d));
 
     if (COMPUTE_CPU_REFERENCE) {
         printf("Average difference is %g\n", compareArrays(phi, phi_cuda, N));
