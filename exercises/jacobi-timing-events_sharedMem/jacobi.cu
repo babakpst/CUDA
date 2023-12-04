@@ -5,7 +5,7 @@
 
 // Change this to 0 if CPU reference result is not needed
 #define COMPUTE_CPU_REFERENCE 1
-#define MAX_ITERATIONS 3000
+#define MAX_ITERATIONS 1800
 
 // CPU kernel
 void sweepCPU(double* phi, const double *phiPrev, const double *source, double h2, int N)
@@ -44,6 +44,61 @@ void sweepGPU(double *phi, const double *phiPrev, const double *source, double h
 
 }
 
+__global__ 
+void sweepGPU2(double *phi, const double *phiPrev, const double *source, double h2, int N)
+{
+    // #error Add here the GPU version of the update routine (see sweepCPU above)
+    int ii = blockDim.x*blockIdx.x + threadIdx.x;
+    int jj = blockDim.y*blockIdx.y + threadIdx.y;
+
+    extern __shared__ double phiPrev_s[];
+    
+    int ind = ii + jj*N;
+    if (ii < N && jj < N)
+    {
+        phiPrev_s[ind] = phiPrev[ind];
+    }
+    __syncthreads();
+
+    if (0<ii && 0 < jj && ii < N-1 && jj < N-1)
+    {
+    //   int ind = ii + jj*N;
+    //   phi[ind] =  0.25 * (phiPrev  [(ii-1)+jj*N] + phiPrev  [(ii+1)+jj*N] + phiPrev  [ii+(jj-1)*N] + phiPrev  [ii+(jj+1)*N] - h2 * source[ind]);
+    phi[ind] = 0.25 * (phiPrev_s[(ii-1)+jj*N] + phiPrev_s[(ii+1)+jj*N] + phiPrev_s[ii+(jj-1)*N] + phiPrev_s[ii+(jj+1)*N] - h2 * source[ind]);
+    }
+
+}
+
+__global__ 
+void test(double *phi, double *phiPrev, int N)
+{
+    // #error Add here the GPU version of the update routine (see sweepCPU above)
+    int ii = blockDim.x*blockIdx.x + threadIdx.x;
+    int jj = blockDim.y*blockIdx.y + threadIdx.y;
+
+    extern __shared__ double phiPrev_s[];
+    
+    int ind = ii + jj*N;
+    // if (ii < N && jj < N)
+    // {
+    //     phiPrev_s[ind] = 1.0;
+    // }
+    // __syncthreads();
+    
+    // if (0<ii && 0 < jj && ii < N-1 && jj < N-1)
+    if (ii < N && jj < N)
+    {
+    //   int ind = ii + jj*N;
+    //   phi[ind] =  0.25 * (phiPrev  [(ii-1)+jj*N] + phiPrev  [(ii+1)+jj*N] + phiPrev  [ii+(jj-1)*N] + phiPrev  [ii+(jj+1)*N] - h2 * source[ind]);
+    // phi[ind] = phiPrev_s[ind];
+    phi[ind] = 1.0;
+    // phiPrev[ind] = phiPrev_s[ind];
+    phiPrev[ind] = 1.0;
+    }
+
+}
+
+
 
 double compareArrays(const double *a, const double *b, int N)
 {
@@ -75,6 +130,7 @@ int main()
 { 
     timeval t1, t2; // Structs for timing
     const int N = 512;
+    // const int N = 32;
     double h = 1.0 / (N - 1);
     int iterations;
     const double tolerance = 5e-4; // Stopping condition
@@ -174,14 +230,18 @@ int main()
         // #error Add GPU kernel calls here (see CPU version above)
         sweepGPU<<<dimGrid, dimBlock>>>(phiPrev_d, phi_d, source_d, h*h, N);
         sweepGPU<<<dimGrid, dimBlock>>>(phi_d, phiPrev_d, source_d, h*h, N);
-
-        iterations += 2;
+// 
+        // sweepGPU2<<<dimGrid, dimBlock,size>>>(phiPrev_d, phi_d, source_d, h*h, N);
+        // sweepGPU2<<<dimGrid, dimBlock,size>>>(phi_d, phiPrev_d, source_d, h*h, N);
         
+        // test<<<dimGrid, dimBlock,size>>>(phiPrev_d, phi_d, N);
+        iterations += 2;
+        cudaDeviceSynchronize();
         if (iterations % 100 == 0) {
             // diffGPU is defined in the header file, it uses
             // Thrust library for reduction computation
-            diff = diffGPU<double>(phiPrev_d, phi_d, N);
-            CHECK_ERROR_MSG("Difference computation");
+            // diff = diffGPU<double>(phiPrev_d, phi_d, N);
+            // CHECK_ERROR_MSG("Difference computation");
             printf("%d %g\n", iterations, diff);
         }
     }
@@ -199,6 +259,11 @@ int main()
 
     printf("GPU Jacobi: %f milliseconds\n", time_diff_ms);
     printf("GPU Jacobi: %g seconds, %d iterations\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec) / 1.0e6, iterations);
+
+    double error = compareArrays(phi_cuda, phi, N);
+    printf("diff %g\n", error);
+
+
 
     //// Add here the clean up code for all allocated CUDA resources
     // #error Add here the clean up code   

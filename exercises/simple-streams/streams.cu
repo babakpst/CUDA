@@ -17,8 +17,7 @@ struct stream {
 };
 
 // Kernel for vector summation
-__global__ void vector_add(double *C, const double *A, const double *B,
-                           int N, int iterations)
+__global__ void vector_add(double *C, const double *A, const double *B, int N, int iterations)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -31,7 +30,6 @@ __global__ void vector_add(double *C, const double *A, const double *B,
         }
     }
 }
-
 
 // Routine for stream test
 void streamtest(double *hC, const double *hA, const double *hB,
@@ -57,20 +55,26 @@ void streamtest(double *hC, const double *hA, const double *hB,
         int sidx = s[i].start;
         int slen = s[i].len;
                                     
-        #error Add here the asynchronous memory copies
-
+        // #error Add here the asynchronous memory copies
+        // asynchronous copies
+        CUDA_CHECK( cudaMemcpyAsync((void *)&(dA[sidx]), (void *)&(hA[sidx]), sizeof(double) * slen, cudaMemcpyHostToDevice) );
+        CUDA_CHECK( cudaMemcpyAsync((void *)&(dB[sidx]), (void *)&(hB[sidx]), sizeof(double) * slen, cudaMemcpyHostToDevice) );
+        
+        
         // You can use these values for the grid and block sizes
         dim3 grid, threads;
         grid.x = (slen + tib - 1) / tib;
         threads.x = tib;
-       
+        
         // Lauch the kernel to the correct stream. See the default stream
         // version for help. Use the stream s[i].strm. The data vector
         // addresses are &(dC[sidx]), etc.
-        #error Add kernel launch to the stream
-
+        // #error Add kernel launch to the stream
+        vector_add<<<grid, threads, 0, s[i].strm>>>(&(dC[sidx]), &(dA[sidx]), &(dB[sidx]), s[i].len, iterations);
+        
         // Adde the missing memory copy
-        #error Add the asynchronous memory copy
+        // #error Add the asynchronous memory copy
+        CUDA_CHECK( cudaMemcpyAsync((void *)&(hC[sidx]), (void *)&(dC[sidx]), sizeof(double) * slen, cudaMemcpyDeviceToHost) );
     }    
 
     // Add the calls needed for execution timing and compute
@@ -100,13 +104,8 @@ void default_stream(double *hC, const double *hA, const double *hB,
     CUDA_CHECK( cudaEventRecord(start) );
 
     // Non-asynchronous copies
-    CUDA_CHECK( cudaMemcpy((void *)dA, (void *)hA,
-                            sizeof(double) * N,
-                            cudaMemcpyHostToDevice) );
-
-    CUDA_CHECK( cudaMemcpy((void *)dB, (void *)hB,
-                            sizeof(double) * N,
-                            cudaMemcpyHostToDevice) );
+    CUDA_CHECK( cudaMemcpy((void *)dA, (void *)hA, sizeof(double) * N, cudaMemcpyHostToDevice) );
+    CUDA_CHECK( cudaMemcpy((void *)dB, (void *)hB, sizeof(double) * N, cudaMemcpyHostToDevice) );
 
     dim3 grid, threads;
     grid.x = (N + tib - 1) / tib;
@@ -177,20 +176,23 @@ int main(int argc, char *argv[])
     cudaDeviceProp prop;
 
     if (argc < 2) {
-        printf("Usage: %s N\nwhere N is the length of the vector.\n",
-                argv[0]);
+        printf("Usage: %s N\nwhere N is the length of the vector.\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
     int N = atoi(argv[1]);
 
     // Determine the number of available multiprocessors on the device.
-    // It is used for a coarse adjustment of the computation part of
-    // this test.
+    // It is used for a coarse adjustment of the computation part of this test.
     cudaGetDeviceProperties(&prop, 0);
     iterations = (prop.multiProcessorCount + 1) / 2;
+    printf(" number of multiprocessor: %d\n", prop.multiProcessorCount);
 
-    #error Add here the host memory allocation routines (page-locked)
+    // #error Add here the host memory allocation routines (page-locked)
+    int sizeByte = N * sizeof(double);
+    CUDA_CHECK( cudaMallocHost((void**)&hA, sizeByte));
+    CUDA_CHECK( cudaMallocHost((void**)&hB, sizeByte));
+    CUDA_CHECK( cudaMallocHost((void**)&hC, sizeByte));
     
     for(int i = 0; i < N; ++i) {
         hA[i] = 1.0;
@@ -204,16 +206,14 @@ int main(int argc, char *argv[])
     CUDA_CHECK( cudaMalloc((void**)&dC, sizeof(double) * N) );
     
     // Check the timings of default stream first
-    default_stream(hC, hA, hB, dC, dA, dB, N, &gputime_ref, ThreadsInBlock,
-                   iterations);
+    default_stream(hC, hA, hB, dC, dA, dB, N, &gputime_ref, ThreadsInBlock, iterations);
 
     // Here we loop over the test. On each iteration, we double the number
     // of streams.
     for(int strm = 0; strm < N_TESTS; strm++) {
         int stream_count = 1<<strm;
         create_streams(stream_count, N, &s);
-        streamtest(hC, hA, hB, dC, dA, dB, s, stream_count, &gputimes[strm],
-                   ThreadsInBlock, iterations);
+        streamtest(hC, hA, hB, dC, dA, dB, s, stream_count, &gputimes[strm], ThreadsInBlock, iterations);
         destroy_streams(stream_count, s);
     }
 
@@ -233,7 +233,10 @@ int main(int argc, char *argv[])
                 gputimes[i] / 1000.);
     }
 
-    #error Add here the correct host memory freeing routines
+    // #error Add here the correct host memory freeing routines
+    CUDA_CHECK( cudaFreeHost((void*)hA) );
+    CUDA_CHECK( cudaFreeHost((void*)hB) );
+    CUDA_CHECK( cudaFreeHost((void*)hC) );
 
     return 0;
 }
