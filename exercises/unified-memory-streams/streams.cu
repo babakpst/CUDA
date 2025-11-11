@@ -13,8 +13,8 @@ struct stream {
 };
 
 // Kernel for vector summation
-__global__ void vector_add(double *C, const double *A, const double *B,
-                           int N, int iterations){
+__global__ void vector_add(double *C, const double *A, const double *B, int N, int iterations)
+{
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
 
@@ -29,13 +29,11 @@ __global__ void vector_add(double *C, const double *A, const double *B,
 
 
 // Routine for stream test
-void streamtest(stream *s, int nstreams,  int tib,
-                int iterations)
+void streamtest(stream *s, int nstreams,  int tib, int iterations)
 {
 
     for (int i = 0; i < nstreams; ++i) {
-        // Add here the copy - kernel execution - copy sequence
-        // for each stream
+        // Add here the copy - kernel execution - copy sequence for each stream
         int slen = s[i].len;
 
         dim3 grid, threads;
@@ -67,18 +65,19 @@ void streamtest(stream *s, int nstreams,  int tib,
 // Create the streams and compute the decomposition
 void create_streams(int nstreams, int vecsize, stream **strm)
 {
-    *strm = new stream[nstreams];
+    *strm = new stream[nstreams]; // this is necessary to pass a null pointer
     stream *s = *strm;
     for(int i = 0; i < nstreams; i++) {
         CUDA_CHECK( cudaStreamCreate(&s[i].strm) );
     }
 
-    s[0].len = vecsize / nstreams;
+    int div = vecsize / nstreams;
+    s[0].len = div;
     s[0].len += vecsize % nstreams ? 1 : 0;
     
 
     for(int i = 1; i < nstreams; i++) {
-       int add = vecsize / nstreams;
+       int add = div;
        if(i < vecsize % nstreams) {
           add++;
        }
@@ -87,11 +86,15 @@ void create_streams(int nstreams, int vecsize, stream **strm)
     
     for(int i = 0; i < nstreams; i++) {
        //TODO: Add here allocations for managed memory
+       CUDA_CHECK( cudaMallocManaged(&(s[i].A), sizeof(double)*s[i].len) );
+       CUDA_CHECK( cudaMallocManaged(&(s[i].B), sizeof(double)*s[i].len) );
+       CUDA_CHECK( cudaMallocManaged(&(s[i].C), sizeof(double)*s[i].len) );
 
        //TODO: Attach them to streams to enable independent operation of the various streams
-
+       CUDA_CHECK( cudaStreamAttachMemAsync(s[i].strm, s[i].A) );
+       CUDA_CHECK( cudaStreamAttachMemAsync(s[i].strm, s[i].B) );
+       CUDA_CHECK( cudaStreamAttachMemAsync(s[i].strm, s[i].C) );
     }
-    
 }
 
 // Delete the streams
@@ -100,8 +103,9 @@ void destroy_streams(int nstreams, stream *s)
     for(int i = 0; i < nstreams; i++) {
         CUDA_CHECK( cudaStreamDestroy(s[i].strm) );
         //TODO: Free memory allocations
-
-
+        CUDA_CHECK( cudaFree((void*)s[i].A) );
+        CUDA_CHECK( cudaFree((void*)s[i].B) );
+        CUDA_CHECK( cudaFree((void*)s[i].C) );
     }
     delete[] s;
 }
@@ -111,33 +115,29 @@ void destroy_streams(int nstreams, stream *s)
 int main(int argc, char *argv[])
 {
     const int ThreadsInBlock = 512;
-    int iterations;
     stream *s;
-
+    
     cudaDeviceProp prop;
-
+    
     if (argc < 2) {
-        printf("Usage: %s N\nwhere N is the length of the vector.\n",
-                argv[0]);
+        printf("Usage: %s N\nwhere N is the length of the vector.\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-
+    
     int N = atoi(argv[1]);
 
     // Determine the number of available multiprocessors on the device.
     // It is used for a coarse adjustment of the computation part of
     // this test.
     cudaGetDeviceProperties(&prop, 0);
-    iterations = (prop.multiProcessorCount + 1) / 2;
+    int iterations = (prop.multiProcessorCount + 1) / 2;
+    printf(" iterations: %d\n",iterations);
 
-
-    // Now do the addition with streams, note that each stream will need to allocate its
-    // own memory area 
+    // Now do the addition with streams, note that each stream will need to allocate its own memory area 
     int stream_count = 8;
     create_streams(stream_count, N, &s);
     streamtest(s, stream_count,  ThreadsInBlock, iterations);
     destroy_streams(stream_count, s);
-
 
     return 0;
 }

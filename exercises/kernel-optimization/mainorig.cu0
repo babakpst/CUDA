@@ -24,11 +24,11 @@ __device__ __host__ Vec3 getNormal(Vec3 pos)
 // distance "estimation" function 
 __device__ __host__ float de(Vec3 pos) 
 {
-    float cutoff = 2.0f;
-    float power = 8.0f;
+    float cutoff = 2;
+    float power = 8;
 	Vec3 z = pos;
-	float dr = 1.0f;
-	float r = 0.0f;
+	float dr = 1.0;
+	float r = 0.0;
 	for (int i = 0; i < 10 ; i++) 
     {
 		r = Vec3::length(z);
@@ -59,16 +59,16 @@ __global__ void computeUV(int height, int width, float *uvxArr, float *uvyArr)
 {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
-    // if(x >= width)
-        // return;
-    if(y >= height || x >= width)
+    if(x >= width)
+        return;
+    if(y >= height)
         return;
 
     float widthFloat = width;
     float heightFloat = height;
 
-    float uvx = (tanf(3.14159265f / 4.0f)) * (2.0f*x - widthFloat) /  widthFloat;
-    float uvy = (tanf(3.14159265f / 4.0f)) * ( heightFloat /  widthFloat) * (2.0f*y- heightFloat) /  heightFloat;
+    float uvx = (tan(3.14159265 / 4.0)) * (2.0*x - widthFloat) /  widthFloat;
+    float uvy = (tan(3.14159265 / 4.0)) * ( heightFloat /  widthFloat) * (2.0*y- heightFloat) /  heightFloat;
     uvxArr[(y*width)+x] = uvx;
     uvyArr[(y*width)+x] = uvy;
 }
@@ -78,16 +78,16 @@ __global__ void trace(int height, int width, float *uvxArr, float *uvyArr, float
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
-    // if(x >= width)
-        // return;
-    if(y >= height || x >= width)
+    if(x >= width)
+        return;
+    if(y >= height)
         return;
 
     float uvx = uvxArr[(y*width)+x];
     float uvy = uvyArr[(y*width)+x];
 	Vec3 rayDirection = Vec3::normalize(lookDirection + Vec3(uvx) * camUp + Vec3(uvy) * camRight);
     float totalDistance = 0;
-    bool hit = false;
+    bool hit = false;;
     for(int iter= 0; iter < 128; iter++)
     {
         Vec3 p = cameraLocation + Vec3(totalDistance) * rayDirection;
@@ -112,19 +112,15 @@ __global__ void shade(int height, int width, float *uvxArr, float *uvyArr, float
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
-    // if(x >= height)
-        // return;
-    if(y >= height || x >= width)
+    if(x >= height)
+        return;
+    if(y >= width)
         return;
 
-    // float uvx = uvxArr[(x*width)+y];
-    // float uvy = uvyArr[(x*width)+y];
-    // float dist = distance[(x*width)+y];
+    float uvx = uvxArr[(x*width)+y];
+    float uvy = uvyArr[(x*width)+y];
+    float dist = distance[(x*width)+y];
 
-    float uvx = uvxArr[(y*width)+x];
-    float uvy = uvyArr[(y*width)+x];
-    float dist = distance[(y*width)+x];
-    
     Vec3 ret = backgroundColor;
     if(dist != INFINITY)
     {
@@ -147,13 +143,9 @@ __global__ void shade(int height, int width, float *uvxArr, float *uvyArr, float
         ret = clamp(((lambIn  * clamp(objectColor)) + specIn));
 
     }
-    // rawR[(x*width)+y] = ret.x;
-    // rawG[(x*width)+y] = ret.y;
-    // rawB[(x*width)+y] = ret.z;
-
-    rawR[(y*width)+x] = ret.x;
-    rawG[(y*width)+x] = ret.y;
-    rawB[(y*width)+x] = ret.z;
+    rawR[(x*width)+y] = ret.x;
+    rawG[(x*width)+y] = ret.y;
+    rawB[(x*width)+y] = ret.z;
 
 }
 
@@ -165,20 +157,17 @@ __global__ void globalIllumination(int height, int width, float *uvxArr, float *
     
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
-    // if(x >= width)
-        // return;
-    if(y >= height || x >= width)
+    if(x >= width)
         return;
-    // float uvx = uvxArr[(y*width)+x];
-    // float uvy = uvyArr[(y*width)+x];
+    if(y >= height)
+        return;
+    float uvx = uvxArr[(y*width)+x];
+    float uvy = uvyArr[(y*width)+x];
     float dist = distance[(y*width)+x];
 
     if(dist != INFINITY)
     {
-        // float gi;
-        float uvx = uvxArr[(y*width)+x];
-        float uvy = uvyArr[(y*width)+x];
-
+        float gi;
         Vec3 rayDirection = Vec3::normalize(lookDirection + Vec3(uvx) * camUp + Vec3(uvy) * camRight);
         Vec3 hitPoint = cameraLocation + Vec3(dist) * rayDirection;
         Vec3 normal = getNormal(hitPoint);
@@ -190,7 +179,7 @@ __global__ void globalIllumination(int height, int width, float *uvxArr, float *
             float currentDist = de(p);
             totalDistance += currentDist;
         }
-        float gi = normalize(0.001,0,totalDistance);
+        gi = normalize(0.001,0,totalDistance);
         if (gi > 1)
             gi = 1;
         gi = 1-gi;
@@ -205,9 +194,9 @@ __global__ void downsample(int height, int width, int scale, float *rawR, float 
 {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
-    // if(x >= width)
-        // return;
-    if(y >= height || x >= width)
+    if(x >= width)
+        return;
+    if(y >= height)
         return;
 
     int inX = x*scale;
@@ -220,9 +209,9 @@ __global__ void downsample(int height, int width, int scale, float *rawR, float 
     {
         for(int j = 0; j < scale; j++)
         {
-            outR += __ldg(&rawR[((inY+i)*width*scale)+(inX+j)]);
-            outG += __ldg(&rawG[((inY+i)*width*scale)+(inX+j)]);
-            outB += __ldg(&rawB[((inY+i)*width*scale)+(inX+j)]);
+            outR += (rawR[((inY+i)*width*scale)+(inX+j)]);
+            outG += (rawG[((inY+i)*width*scale)+(inX+j)]);
+            outB += (rawB[((inY+i)*width*scale)+(inX+j)]);
         }
     }
     imageR[(y*width)+x] = outR/(float)(scale*scale);
@@ -252,8 +241,10 @@ int main() {
     float *d_imageR;
     float *d_imageG;
     float *d_imageB;
-        
+    
+    
     float *distance;
+
 
     cudaMalloc(&rawR, (width*scale)*(height*scale) * sizeof(float));
     cudaMalloc(&rawG, (width*scale)*(height*scale) * sizeof(float));
@@ -283,8 +274,8 @@ int main() {
     cudaMallocHost(&imageB, width*height * sizeof(float));
     
 
-    // float max = 0;
-    // float min = 0;
+    float max = 0;
+    float min = 0;
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -320,11 +311,8 @@ int main() {
     dim3 threadsTrace;
     dim3 blocksTrace;
 
-    // threadsTrace.x = 1024;
-    // threadsTrace.y = 1;
-
-    threadsTrace.x = 8;
-    threadsTrace.y = 8;
+    threadsTrace.x = 1024;
+    threadsTrace.y = 1;
 
     blocksTrace.x = 1 + (widthScale/threadsTrace.x);
     blocksTrace.y = 1 + (heightScale/threadsTrace.y);
@@ -341,11 +329,8 @@ int main() {
     threadsShade.x = 32;
     threadsShade.y = 32;
 
-    // blocksShade.x = 1 + (heightScale/threadsShade.x);
-    // blocksShade.y = 1 + (widthScale/threadsShade.y);
-
-    blocksShade.x = 1 + (widthScale/threadsShade.x);
-    blocksShade.y = 1 + (heightScale/threadsShade.y);
+    blocksShade.x = 1 + (heightScale/threadsShade.x);
+    blocksShade.y = 1 + (widthScale/threadsShade.y);
 
     getErrorCuda((shade<<<blocksShade, threadsShade>>>(heightScale, widthScale, uvxArr, uvyArr, distance,
     lookDirection, camUp, camRight, backgroundColor, cameraLocation, rawR, rawG, rawB)));
@@ -356,11 +341,8 @@ int main() {
     dim3 threadsGi;
     dim3 blocksGi;
 
-    // threadsGi.x = 32;
-    // threadsGi.y = 32;
-
-    threadsGi.x = 8;
-    threadsGi.y = 8;
+    threadsGi.x = 32;
+    threadsGi.y = 32;
 
     blocksGi.x = 1+ (widthScale/threadsGi.x);
     blocksGi.y = 1+ (heightScale/threadsGi.y);
